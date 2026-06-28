@@ -12,14 +12,18 @@
 когда bot и web работают одновременно.
 """
 
-import aiosqlite
+import os
 from contextlib import asynccontextmanager
 
-DB_PATH = "database/database.db"
+import aiosqlite
+
+DATA_DIR = os.getenv("DATA_DIR", "database")
+DB_PATH = os.path.join(DATA_DIR, "database.db")
 
 
 # Открывает новое подключение SQLite и применяет PRAGMA-настройки.
 async def _open_conn() -> aiosqlite.Connection:
+    os.makedirs(DATA_DIR, exist_ok=True)
     conn = await aiosqlite.connect(DB_PATH)
     conn.row_factory = aiosqlite.Row
     await conn.execute("PRAGMA journal_mode=WAL;")

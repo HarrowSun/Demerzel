@@ -9,7 +9,7 @@ from aiogram import Bot
 from aiogram.types import FSInputFile
 from dotenv import load_dotenv
 
-from bot.database import flush_db
+from bot.database import DB_PATH, flush_db
 from bot.message_queue import bot_send_document
 from env_config import require_int_env
 
@@ -21,7 +21,7 @@ def get_backup_channel_id() -> int:
 
 PROJECT_ROOT = "."
 BACKUP_DIR = "backup"
-DB_FILE = "database/database.db"
+DB_FILE = DB_PATH
 
 MAX_FILE_SIZE = 48 * 1024 * 1024  # 48 МБ
 
