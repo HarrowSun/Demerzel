@@ -3,6 +3,7 @@ from logger.console import setup_console_capture
 setup_console_capture("log")
 
 import asyncio
+import os
 import signal
 import sys
 import threading
@@ -24,10 +25,11 @@ def run_web(
 ):
     server = None
     try:
-        server = create_server(app, host="0.0.0.0", port=7196)
+        port = int(os.getenv("PORT", "7196"))
+        server = create_server(app, host="0.0.0.0", port=port)
         web_state["server"] = server
 
-        print("Сервер запущен")
+        print(f"Сервер запущен на порту {port}")
         server.run()
 
         if not shutdown_event.is_set():
