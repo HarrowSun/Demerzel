@@ -2,6 +2,7 @@
 
 from flask import Flask, render_template, redirect, session
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 from env_config import require_env
 
 load_dotenv()
@@ -11,6 +12,8 @@ load_dotenv()
 def create_app():
     app = Flask(__name__)
     app.secret_key = require_env("FLASK_SECRET_KEY")
+    # Bothost/Traefik терминирует HTTPS и проксирует HTTP — нужно для корректных redirect URL.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     from .auth import auth_bp
     app.register_blueprint(auth_bp)

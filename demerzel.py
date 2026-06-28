@@ -51,7 +51,7 @@ def run_web(
         server = create_server(app, host="0.0.0.0", port=port)
         web_state["server"] = server
 
-        print(f"Сервер запущен на порту {port}")
+        print(f"Сервер запущен на 0.0.0.0:{port} (админка: /login, health: /health)")
         server.run()
 
         if not shutdown_event.is_set():

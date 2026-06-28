@@ -85,7 +85,7 @@ RUN if [ -f .env ] && ! python -c 'import dotenv' 2>/dev/null; then \
 fi
 
 
-# Определяем точку входа
-EXPOSE 7196
+# Bothost проксирует на PORT из панели (обычно 3000). EXPOSE — подсказка для платформы.
+EXPOSE 3000
 ENV PYTHONUNBUFFERED=1
 CMD ["python", "demerzel.py"]
