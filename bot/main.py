@@ -35,7 +35,7 @@ async def main():
     try:
         await dp.start_polling(
             bot,
-            allowed_updates=["chat_member", "my_chat_member", "message"],
+            allowed_updates=["chat_member", "my_chat_member", "message", "message_reaction"],
         )
 
     finally:

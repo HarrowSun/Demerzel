@@ -24,6 +24,8 @@ router = Router()
 KICK_GROUP_WINDOW = 1.0
 PENDING_KICK: dict[tuple[int, int], asyncio.Task] = {}
 
+
+#     ("can_react_to_messages", "Установка рекции на сообщение"),
 USER_RIGHTS = [
     ("can_send_messages", "Отправка сообщений"),
     ("can_send_photos", "Фотографий"),
@@ -58,7 +60,6 @@ USER_FIELDS = {f for f, _ in USER_RIGHTS}
 ADMIN_FIELDS = {f for f, _ in ADMIN_RIGHTS}
 ALL_RIGHT_FIELDS = USER_FIELDS | ADMIN_FIELDS
 
-
 # Формирует HTML-ссылку на пользователя Telegram.
 def user_link(user, fallback_username=None):
     name = hd.quote(user.full_name)
@@ -68,16 +69,13 @@ def user_link(user, fallback_username=None):
         text += f" @{username}"
     return text
 
-
 # Формирует человекочитаемый тег чата для лога.
 def tag_chat(chat_id: int) -> str:
     return f"#c{abs(int(chat_id))}"
 
-
 # Формирует человекочитаемый тег пользователя для лога.
 def tag_user(user_id: int) -> str:
     return f"#u{int(user_id)}"
-
 
 # Снимает снапшот ключевых полей участника чата.
 def snapshot(member, rights_map):
@@ -89,7 +87,6 @@ def snapshot(member, rights_map):
         if isinstance(v, bool):
             lines.append(f"{'+' if v else '-'} {label}")
     return lines
-
 
 # Сравнивает булевы поля до/после и возвращает изменения.
 def diff_bool_fields(old, new):
@@ -107,7 +104,6 @@ def diff_bool_fields(old, new):
 
     return added, removed
 
-
 # Вычисляет итоговый статус участника по данным Telegram.
 def effective_status(member) -> ChatMemberStatus:
     """
@@ -119,7 +115,6 @@ def effective_status(member) -> ChatMemberStatus:
             return ChatMemberStatus.LEFT
     return member.status
 
-
 # Проверяет, считается ли участник "фактически в чате" для JOIN/LEAVE логики.
 def is_in_chat(member) -> bool:
     """
@@ -130,7 +125,6 @@ def is_in_chat(member) -> bool:
     if member.status == ChatMemberStatus.RESTRICTED:
         return getattr(member, "is_member", True) is True
     return True
-
 
 # Формирует и отправляет аудит-лог события в отдельный лог-канал.
 async def send_log(event, event_tag, old, new, added, removed, change_lines):
@@ -185,7 +179,6 @@ async def send_log(event, event_tag, old, new, added, removed, change_lines):
         parse_mode="HTML",
     )
 
-
 # Планирует отложенный бан/кик пользователя.
 async def schedule_ban(key, event, old, new, added, removed, change_lines):
     try:
@@ -195,7 +188,6 @@ async def schedule_ban(key, event, old, new, added, removed, change_lines):
         pass
     finally:
         PENDING_KICK.pop(key, None)
-
 
 # Логирует изменения статуса и прав участника.
 @router.chat_member()
@@ -241,6 +233,7 @@ async def log_member_changes(event: ChatMemberUpdated):
 
         # При входе даем только текстовые сообщения на уровне Telegram.
         # Это не заменяет внутренние правила модерации, а задает базовые права чата.
+        # can_react_to_messages=False,
         try:
             await event.bot.restrict_chat_member(
                 chat_id=chat.id,

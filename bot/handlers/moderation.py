@@ -1,6 +1,6 @@
 # Модерация контента и права пользователей: фильтры, лимиты и предупреждения.
 
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile , MessageReactionUpdated
 from aiogram.filters import Command
 from aiogram import Router, Bot
 from aiogram.enums import ChatMemberStatus
@@ -19,16 +19,13 @@ router = Router()
 LOG_CHANNEL_ID = require_int_env("LOG_CHANNEL_ID")
 SOURCE_CHAT_ID = require_int_env("SOURCE_CHAT_ID")
 
-
 # Формирует человекочитаемый тег чата для логов.
 def tag_chat(chat_id: int) -> str:
     return f"#c{abs(int(chat_id))}"
 
-
 # Формирует человекочитаемый тег пользователя для логов.
 def tag_user(user_id: int) -> str:
     return f"#u{int(user_id)}"
-
 
 # Отправляет лог удаления сообщения за мат в лог-канал.
 async def send_badword_deleted_log(
@@ -84,7 +81,6 @@ async def send_badword_deleted_log(
     except Exception as e:
         print(f"Ошибка отправки badword-лога: {e}")
 
-
 # Проверяет наличие ссылок в entities/caption_entities сообщения.
 async def message_has_link(message: Message) -> bool:
     """
@@ -102,7 +98,6 @@ async def message_has_link(message: Message) -> bool:
             return True
 
     return False
-
 
 # Возвращает permission_level пользователя в чате (0/1/2) для правил модерации.
 async def get_permission_level(chat_id: int, user_id: int) -> int:
@@ -123,7 +118,6 @@ async def get_permission_level(chat_id: int, user_id: int) -> int:
         )
         row = await cur.fetchone()
         return int(row[0]) if row is not None and row[0] is not None else 0
-
 
 # Устанавливает permission_level пользователю (создает запись в chat_users при отсутствии).
 async def set_permission_level(chat_id: int, user_id: int, level: int) -> None:
@@ -159,7 +153,6 @@ async def set_permission_level(chat_id: int, user_id: int, level: int) -> None:
                 (level, chat_id, user_id),
             )
 
-
 # Проверяет право пользователя использовать /view (поле can_view_forms).
 async def has_view_permission(chat_id: int, user_id: int) -> bool:
     """
@@ -177,7 +170,6 @@ async def has_view_permission(chat_id: int, user_id: int) -> bool:
         )
         row = await cur.fetchone()
         return bool(row and row[0])
-
 
 # Выдает/снимает право пользователя на просмотр анкет (/view).
 async def set_view_permission(chat_id: int, user_id: int, allowed: bool = True) -> None:
@@ -213,7 +205,6 @@ async def set_view_permission(chat_id: int, user_id: int, allowed: bool = True) 
                 (value, chat_id, user_id),
             )
 
-
 # Проверяет, действует ли у пользователя разрешение на голосовые сообщения.
 async def has_voice_permission(chat_id: int, user_id: int) -> bool:
     """
@@ -234,7 +225,6 @@ async def has_voice_permission(chat_id: int, user_id: int) -> bool:
         if row is None:
             return False
         return int(row[0]) > now
-
 
 # Проверяет и обновляет суточный лимит голосовых (20/день).
 async def check_and_update_voice_limit(chat_id: int, user_id: int, add_count: int = 1) -> bool:
@@ -284,6 +274,79 @@ async def check_and_update_voice_limit(chat_id: int, user_id: int, add_count: in
         return True
 
 
+
+
+# Проверяет, действует ли у пользователя разрешение на видео сообщения.
+async def has_video_note_permission(chat_id: int, user_id: int) -> bool:
+    """
+    Проверка наличия прав на видео:
+    valid_until > now в таблице video_note_permissions.
+    """
+    now = int(time.time())
+    async with db() as cur:
+        await cur.execute(
+            """
+            SELECT valid_until
+            FROM video_note_permissions
+            WHERE chat_id = ? AND user_id = ?
+            """,
+            (chat_id, user_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return False
+        return int(row[0]) > now
+
+# Проверяет и обновляет суточный лимит видео (7/день).
+async def check_and_update_video_note_limit(chat_id: int, user_id: int, add_count: int = 1) -> bool:
+    """
+    Суточный лимит видео: не более 7 в день.
+    Работает по таблице video_note_permissions (used_today, used_date).
+    Возвращает:
+      True  — если можно пропустить (и счётчик обновлён),
+      False — если лимит превышен.
+    """
+    now = int(time.time())
+    today_str = time.strftime("%Y-%m-%d", time.localtime(now))
+
+    async with db() as cur:
+        await cur.execute(
+            """
+            SELECT used_today, used_date
+            FROM video_note_permissions
+            WHERE chat_id = ? AND user_id = ?
+            """,
+            (chat_id, user_id),
+        )
+        row = await cur.fetchone()
+
+        if row is None:
+            return False
+
+        used_today, used_date = row
+        used_today = int(used_today or 0)
+        used_date = used_date or ""
+
+        if used_date != today_str:
+            used_today = 0
+
+        if used_today + add_count > 7:
+            return False
+
+        used_today += add_count
+        await cur.execute(
+            """
+            UPDATE video_note_permissions
+            SET used_today = ?, used_date = ?
+            WHERE chat_id = ? AND user_id = ?
+            """,
+            (used_today, today_str, chat_id, user_id),
+        )
+        return True
+
+
+
+
 # Проверяет, действует ли у пользователя разрешение на эмодзи.
 async def has_emoji_permission(chat_id: int, user_id: int) -> bool:
     """
@@ -301,7 +364,6 @@ async def has_emoji_permission(chat_id: int, user_id: int) -> bool:
         )
         row = await cur.fetchone()
         return row is not None
-
 
 # Проверяет и обновляет суточный лимит эмодзи (50/день).
 async def check_and_update_emoji_limit(chat_id: int, user_id: int, emojis_count: int) -> bool:
@@ -330,7 +392,6 @@ async def check_and_update_emoji_limit(chat_id: int, user_id: int, emojis_count:
         )
 
         return cur.rowcount > 0
-
 
 # Проверяет активный мут пользователя и чистит просроченный мут.
 async def is_user_muted(chat_id: int, user_id: int) -> bool:
@@ -370,7 +431,6 @@ async def is_user_muted(chat_id: int, user_id: int) -> bool:
 
         return True
 
-
 # Загружает шаблон предупреждения для конкретного типа ограничения (link/badword и т.д.).
 async def get_permission_settings(permission_type: str):
     """
@@ -399,7 +459,6 @@ async def get_permission_settings(permission_type: str):
             "button_url": row[3],
         }
 
-
 # Сохраняет данные в базе или кэше.
 async def save_permission_message(chat_id: int, message_id: int) -> None:
     """
@@ -418,7 +477,6 @@ async def save_permission_message(chat_id: int, message_id: int) -> None:
             (chat_id, message_id),
         )
 
-
 # Возвращает id последнего warning-сообщения в чате для последующего удаления.
 async def get_old_permission_message(chat_id: int):
     """
@@ -435,7 +493,6 @@ async def get_old_permission_message(chat_id: int):
         )
         row = await cur.fetchone()
         return int(row[0]) if row else None
-
 
 # Отправляет warning по ограничению и заменяет предыдущее warning-сообщение в чате.
 async def send_restriction_warning(message: Message, permission_type: str) -> bool:
@@ -509,7 +566,6 @@ async def send_restriction_warning(message: Message, permission_type: str) -> bo
 
     return True
 
-
 # Выдает/снимает разрешение на медиа по reply-команде.
 @router.message(Command("media"))
 async def media_permission_handler(message: Message, bot: Bot):
@@ -552,7 +608,6 @@ async def media_permission_handler(message: Message, bot: Bot):
 
     except Exception as e:
         print("Ошибка /media:", e)
-
 
 # Выдает/продлевает доступ к голосовым сообщениям.
 @router.message(Command("voice"))
@@ -637,6 +692,88 @@ async def voice_allow_handler(message: Message, bot: Bot):
     except Exception as e:
         print("Ошибка /voice:", e)
 
+# Выдает/продлевает доступ к видео сообщениям.
+@router.message(Command("video_note"))
+async def video_note_allow_handler(message: Message, bot: Bot):
+    """
+    /video_note <дней> — только в ответ на сообщение.
+    Выдаёт/продлевает права на видео сообщения.
+    Права + лимит 7/день.
+    """
+    try:
+        await safe_delete(message)
+
+        chat_id = message.chat.id
+
+        if await is_user_muted(chat_id, message.from_user.id):
+            return
+
+        if not message.reply_to_message:
+            return
+
+        member = await bot.get_chat_member(chat_id, message.from_user.id)
+        if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+            return
+
+        # Ожидаем формат: /video_note <days>.
+        args = message.text.split()
+        if len(args) != 2 or not args[1].isdigit():
+            return
+
+        days = int(args[1])
+        if days <= 0:
+            return
+
+        target_user = message.reply_to_message.from_user
+
+        now = int(time.time())
+        additional_time = days * 86400  # дни → секунды
+
+        # Если запись уже есть — продлеваем право от текущего valid_until, иначе создаем новую.
+        async with db() as cur:
+            await cur.execute(
+                """
+                SELECT valid_until
+                FROM video_note_permissions
+                WHERE chat_id = ? AND user_id = ?
+                """,
+                (chat_id, target_user.id),
+            )
+            row = await cur.fetchone()
+
+            if row is None:
+                new_valid_until = now + additional_time
+                await cur.execute(
+                    """
+                    INSERT INTO video_note_permissions (chat_id, user_id, valid_until, used_today, used_date)
+                    VALUES (?, ?, ?, 0, '')
+                    """,
+                    (chat_id, target_user.id, new_valid_until),
+                )
+            else:
+                current_valid_until = int(row[0])
+                base_time = current_valid_until if current_valid_until > now else now
+                new_valid_until = base_time + additional_time
+                await cur.execute(
+                    """
+                    UPDATE video_note_permissions
+                    SET valid_until = ?
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (new_valid_until, chat_id, target_user.id),
+                )
+
+        full_name = await get_full_name(target_user)
+        formatted_date = time.strftime("%d.%m.%Y", time.localtime(new_valid_until))
+
+        await bot_answer(
+            message,
+            f"Пользователю {full_name} выдано разрешение на видео сообщения "
+            f"на {days} дней (до {formatted_date}).",
+        )
+
+    except Exception as e:
+        print("Ошибка /video_note:", e)
 
 # Выдает/продлевает доступ к эмодзи.
 @router.message(Command("emoji"))
@@ -722,7 +859,6 @@ async def emoji_allow_handler(message: Message, bot: Bot):
     except Exception as e:
         print("Ошибка /emoji:", e)
 
-
 # Выдает право смотреть анкеты через /view.
 @router.message(Command("canview"))
 async def canview_allow_handler(message: Message, bot):
@@ -754,6 +890,77 @@ async def canview_allow_handler(message: Message, bot):
         print("Ошибка /canview:", e)
 
 
+@router.message(Command("say_tag"))
+async def say_tag_allow_handler(message: Message, bot: Bot):
+    """
+    /say_tag <дней> — только в ответ на сообщение.
+    Выдаёт/продлевает права на видео сообщения.
+    Права + лимит 7/день.
+    """
+    try:
+        await safe_delete(message)
+
+        chat_id = message.chat.id
+
+        if await is_user_muted(chat_id, message.from_user.id):
+            return
+
+        if not message.reply_to_message:
+            return
+
+        member = await bot.get_chat_member(chat_id, message.from_user.id)
+        if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+            return
+        
+        # Ожидаем формат: /video_note <days>.
+        args = message.text.split()
+        if len(args) != 2 or not args[1].isdigit():
+            return
+
+        days = int(args[1])
+        if days <= 0:
+            return
+
+        target_user = message.reply_to_message.from_user
+
+        target_member = await bot.get_chat_member(
+            chat_id,
+            target_user.id
+        )
+
+        target_current_tag = getattr(target_member, "custom_title", None)
+
+        full_name = await get_full_name(target_user)
+
+        await bot_answer(
+            message,
+            f"Пользователю {full_name} с ТЕГОМ {target_current_tag} выдано разрешение на видео сообщения "
+            f"на {days} дней (до c скончания времен).",
+        )
+
+    except Exception as e:
+        print("Ошибка /say_tag:", e)
+
+# Реагирует на реакцию на сообщение
+@router.message_reaction()
+async def reaction_handler(event: MessageReactionUpdated):
+    
+    chat_id = event.chat.id
+    user_id = event.user.id
+    level = await get_permission_level(chat_id, user_id)
+     
+    if level == 2:
+        return
+
+    try:
+        await event.bot.delete_message_reaction(
+            chat_id=chat_id,
+            message_id=event.message_id,
+            user_id=user_id,
+        )
+    except Exception as e:
+        print(f"Ошибка удаления реакции: {e}")
+    
 # Проводит текстовую модерацию: мут, мат, ссылки и лимиты эмодзи.
 async def moderation_handle_text(message: Message, level: int) -> bool:
     """
@@ -824,7 +1031,6 @@ async def moderation_handle_text(message: Message, level: int) -> bool:
 
     return False
 
-
 # Главный роутер модерации по типам контента сообщения.
 async def moderation_handle_message(message: Message) -> bool:
     """
@@ -875,11 +1081,24 @@ async def moderation_handle_message(message: Message) -> bool:
         return False  # всё ок
 
     if content_type == "video_note":
-        if level < 2:
+        if not await has_video_note_permission(chat_id, user_id):
             await safe_delete(message)
             await send_restriction_warning(message, "video_note")
             return True
-        return False
+        
+        full_name = await get_full_name(message.from_user)
+
+        if not await check_and_update_video_note_limit(chat_id, user_id, 1):
+            await safe_delete(message)
+            sent = await bot_answer(
+                message,
+                f"{full_name}, превышен дневной лимит видео сообщений (7). Сообщение удалено.",
+                wait=True
+            )
+            await save_timed_message(chat_id, sent.message_id)
+            return True
+
+        return False  # всё ок
 
     allowed_level0 = {"text"}
     if level == 0 and content_type not in allowed_level0:
