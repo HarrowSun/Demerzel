@@ -3,11 +3,34 @@ from logger.console import setup_console_capture
 setup_console_capture("log")
 
 import asyncio
+import os
 import signal
 import sys
 import threading
 import tracemalloc
 from typing import Any
+
+REQUIRED_ENV_VARS = (
+    "BOT_TOKEN",
+    "FLASK_SECRET_KEY",
+    "ADMIN_USERNAME",
+    "ADMIN_PASSWORD",
+    "BACKUP_CHANNEL_ID",
+    "LOG_CHANNEL_ID",
+    "SOURCE_CHAT_ID",
+    "COSMOS_ID",
+)
+
+
+def _log_env_status() -> None:
+    missing = [name for name in REQUIRED_ENV_VARS if not (os.getenv(name) or "").strip()]
+    if missing:
+        print("Не заданы переменные окружения:", ", ".join(missing))
+    else:
+        print("Все обязательные переменные окружения заданы")
+
+
+_log_env_status()
 
 from bot.database import close_db
 from bot.main import main as bot_main
@@ -24,10 +47,11 @@ def run_web(
 ):
     server = None
     try:
-        server = create_server(app, host="0.0.0.0", port=7196)
+        port = int(os.getenv("PORT", "7196"))
+        server = create_server(app, host="0.0.0.0", port=port)
         web_state["server"] = server
 
-        print("Сервер запущен")
+        print(f"Сервер запущен на порту {port}")
         server.run()
 
         if not shutdown_event.is_set():
