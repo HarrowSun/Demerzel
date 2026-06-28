@@ -86,4 +86,6 @@ fi
 
 
 # Определяем точку входа
+EXPOSE 7196
+ENV PYTHONUNBUFFERED=1
 CMD ["python", "demerzel.py"]

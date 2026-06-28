@@ -39,6 +39,10 @@ def create_app():
     from .edit_badwords import edit_badwords_bp
     app.register_blueprint(edit_badwords_bp)
 
+    @app.get("/health")
+    def health():
+        return "ok", 200
+
     # Редиректит на стартовую страницу панели после авторизации.
     @app.route("/")
     async def index():
