@@ -10,6 +10,28 @@ import threading
 import tracemalloc
 from typing import Any
 
+REQUIRED_ENV_VARS = (
+    "BOT_TOKEN",
+    "FLASK_SECRET_KEY",
+    "ADMIN_USERNAME",
+    "ADMIN_PASSWORD",
+    "BACKUP_CHANNEL_ID",
+    "LOG_CHANNEL_ID",
+    "SOURCE_CHAT_ID",
+    "COSMOS_ID",
+)
+
+
+def _log_env_status() -> None:
+    missing = [name for name in REQUIRED_ENV_VARS if not (os.getenv(name) or "").strip()]
+    if missing:
+        print("Не заданы переменные окружения:", ", ".join(missing))
+    else:
+        print("Все обязательные переменные окружения заданы")
+
+
+_log_env_status()
+
 from bot.database import close_db
 from bot.main import main as bot_main
 from bot.memory_monitor import memory_monitor_loop

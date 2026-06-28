@@ -15,7 +15,9 @@ from env_config import require_int_env
 
 load_dotenv()
 
-CHANNEL_ID = require_int_env("BACKUP_CHANNEL_ID")
+
+def get_backup_channel_id() -> int:
+    return require_int_env("BACKUP_CHANNEL_ID")
 
 PROJECT_ROOT = "."
 BACKUP_DIR = "backup"
@@ -95,6 +97,7 @@ async def split_file(file_path: str, chunk_size: int = MAX_FILE_SIZE):
 
 # Отправляет файл (или его части) в backup-канал Telegram.
 async def send_file(bot: Bot, file_path: str, caption: str = None):
+    channel_id = get_backup_channel_id()
     if not os.path.exists(file_path):
         print("Файл не найден:", file_path)
         return
@@ -105,9 +108,9 @@ async def send_file(bot: Bot, file_path: str, caption: str = None):
         try:
             file = FSInputFile(file_path)
             if caption is not None:
-                await bot_send_document(bot, CHANNEL_ID, file, wait=True, caption=caption)
+                await bot_send_document(bot, channel_id, file, wait=True, caption=caption)
             else:
-                await bot_send_document(bot, CHANNEL_ID, file, wait=True)
+                await bot_send_document(bot, channel_id, file, wait=True)
             print("Файл успешно отправлен:", file_path)
         except Exception as e:
             print(f"Ошибка при отправке файла {file_path}: {e}")
@@ -120,9 +123,9 @@ async def send_file(bot: Bot, file_path: str, caption: str = None):
         try:
             file = FSInputFile(part)
             if caption is not None:
-                await bot_send_document(bot, CHANNEL_ID, file, wait=True, caption=caption)
+                await bot_send_document(bot, channel_id, file, wait=True, caption=caption)
             else:
-                await bot_send_document(bot, CHANNEL_ID, file, wait=True)
+                await bot_send_document(bot, channel_id, file, wait=True)
             print("Отправлена часть:", part)
         except Exception as e:
             print(f"Ошибка при отправке части {part}: {e}")
@@ -139,6 +142,11 @@ async def run_daily(bot: Bot, hour: int = 0, minute: int = 0):
     Первый запуск — ждём до указанного времени.
     Дальше — раз в сутки.
     """
+    try:
+        get_backup_channel_id()
+    except RuntimeError as e:
+        print(f"Бэкап отключён: {e}")
+        return
 
     now = datetime.now()
     first_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
