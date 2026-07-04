@@ -34,15 +34,35 @@ async def safe_delete(message: Message) -> None:
         pass
 
 
-# Сохраняет данные в базе или кэше.
-async def save_timed_message(chat_id: int, message_id: int):
+# TTL для временных сообщений бота (секунды).
+DEFAULT_TIMED_MESSAGE_TTL = 300  # 5 минут
+BAN_KICK_MESSAGE_TTL = 24 * 60 * 60  # сутки
+
+
+# Добавляет колонку ttl_seconds в timed_messages, если её ещё нет.
+async def ensure_timed_messages_ttl_column(cur) -> None:
+    await cur.execute("PRAGMA table_info(timed_messages)")
+    columns = {row[1] for row in await cur.fetchall()}
+    if "ttl_seconds" not in columns:
+        await cur.execute(
+            "ALTER TABLE timed_messages ADD COLUMN ttl_seconds INTEGER NOT NULL DEFAULT 300"
+        )
+
+
+# Сохраняет сообщение для отложенного удаления через ttl_seconds.
+async def save_timed_message(
+    chat_id: int,
+    message_id: int,
+    ttl_seconds: int = DEFAULT_TIMED_MESSAGE_TTL,
+):
     async with db() as cur:
+        await ensure_timed_messages_ttl_column(cur)
         await cur.execute(
             """
-            INSERT INTO timed_messages (chat_id, message_id, send_time)
-            VALUES (?, ?, strftime('%s','now'))
+            INSERT INTO timed_messages (chat_id, message_id, send_time, ttl_seconds)
+            VALUES (?, ?, strftime('%s','now'), ?)
             """,
-            (chat_id, message_id),
+            (chat_id, message_id, ttl_seconds),
         )
 
 

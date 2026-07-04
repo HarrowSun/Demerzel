@@ -12,6 +12,8 @@ from bot.handlers.chat_lock import handle_chat_lock
 from bot.handlers.moderation import moderation_handle_message
 from bot.message_queue import bot_send_photo
 from bot.utils import (
+    DEFAULT_TIMED_MESSAGE_TTL,
+    ensure_timed_messages_ttl_column,
     get_full_name,
     safe_delete,
     send_info,
@@ -64,7 +66,10 @@ async def _get_wisdom_timer_seconds() -> int | None:
 
 async def _fetch_timed_messages():
     async with db() as cur:
-        await cur.execute("SELECT chat_id, message_id, send_time FROM timed_messages")
+        await ensure_timed_messages_ttl_column(cur)
+        await cur.execute(
+            "SELECT chat_id, message_id, send_time, ttl_seconds FROM timed_messages"
+        )
         return await cur.fetchall()
 
 
@@ -236,8 +241,9 @@ async def wisdom_loop(bot: Bot):
             current_time = time.time()
             wisdom_timer_seconds = await _get_wisdom_timer_seconds()
 
-            for chat_id, message_id, send_time in await _fetch_timed_messages():
-                if current_time - float(send_time) > 300:
+            for chat_id, message_id, send_time, ttl_seconds in await _fetch_timed_messages():
+                ttl = int(ttl_seconds) if ttl_seconds is not None else DEFAULT_TIMED_MESSAGE_TTL
+                if current_time - float(send_time) > ttl:
                     try:
                         await bot.delete_message(chat_id, message_id)
                     except Exception as e:

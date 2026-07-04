@@ -8,7 +8,7 @@ from aiogram.enums import ChatMemberStatus
 from bot.message_queue import bot_answer, bot_reply, bot_send_photo
 
 from bot.database import db
-from bot.utils import (save_timed_message, get_old_messages, 
+from bot.utils import (save_timed_message, BAN_KICK_MESSAGE_TTL, get_old_messages, 
 update_old_message, get_full_name, is_in_chat_member, safe_delete)
 from bot.handlers.moderation import is_user_muted, send_restriction_warning
 from env_config import require_int_env
@@ -496,13 +496,13 @@ async def handle_ban_command(message: Message, bot: Bot):
 
         if target_id in admin_ids:
             sent = await bot_answer(message, "Нельзя банить администраторов.", wait=True)
-            await save_timed_message(chat_id, sent.message_id)
+            await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
             return
 
         await bot.ban_chat_member(chat_id, target_id)
 
         sent = await bot_answer(message, f"Пользователь {full_name} был забанен.", wait=True)
-        await save_timed_message(chat_id, sent.message_id)
+        await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
     except Exception as e:
         print("Ошибка /ban:", e)
 
@@ -532,14 +532,14 @@ async def handle_kick_command(message: Message, bot: Bot):
 
         if target_id in admin_ids:
             sent = await bot_answer(message, "Нельзя кикать администраторов.", wait=True)
-            await save_timed_message(chat_id, sent.message_id)
+            await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
             return
 
         await bot.ban_chat_member(chat_id, target_id)
         await bot.unban_chat_member(chat_id, target_id)
 
         sent = await bot_answer(message, f"Пользователь {full_name} был кикнут из чата.", wait=True)
-        await save_timed_message(chat_id, sent.message_id)
+        await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
     except Exception as e:
         print("Ошибка /kick:", e)
 
