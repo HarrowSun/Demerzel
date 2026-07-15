@@ -1,18 +1,42 @@
-// autoresize.js
+(function () {
+  function adjustHeight(textarea) {
+    if (!textarea || textarea.tagName !== 'TEXTAREA') return;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.max(textarea.scrollHeight, 88) + 'px';
+  }
 
-// Функция для автоподстройки высоты
-function adjustHeight(textarea) {
-    textarea.style.height = 'auto'; // Сбрасываем высоту
-    textarea.style.height = (textarea.scrollHeight) + 'px'; // Устанавливаем новую высоту
-}
-
-// Получаем все textarea на странице
-document.querySelectorAll('textarea').forEach(function (textarea) {
-    // Настроим высоту textarea при загрузке страницы
+  function prepare(textarea) {
+    if (!textarea || textarea.dataset.autoresizeReady === '1') return;
+    textarea.dataset.autoresizeReady = '1';
     adjustHeight(textarea);
+  }
 
-    // Функция для автоподстройки высоты при вводе текста
-    textarea.addEventListener('input', function () {
-        adjustHeight(this);
+  document.querySelectorAll('textarea').forEach(prepare);
+
+  document.addEventListener('input', function (event) {
+    if (event.target && event.target.tagName === 'TEXTAREA') {
+      prepare(event.target);
+      adjustHeight(event.target);
+    }
+  });
+
+  document.addEventListener('toggle', function (event) {
+    if (event.target && event.target.matches('details[open]')) {
+      event.target.querySelectorAll('textarea').forEach(function (textarea) {
+        prepare(textarea);
+        requestAnimationFrame(function () { adjustHeight(textarea); });
+      });
+    }
+  }, true);
+
+  const observer = new MutationObserver(function (mutations) {
+    mutations.forEach(function (mutation) {
+      mutation.addedNodes.forEach(function (node) {
+        if (!(node instanceof Element)) return;
+        if (node.matches('textarea')) prepare(node);
+        node.querySelectorAll('textarea').forEach(prepare);
+      });
     });
-});
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+})();

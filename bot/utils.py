@@ -34,35 +34,15 @@ async def safe_delete(message: Message) -> None:
         pass
 
 
-# TTL для временных сообщений бота (секунды).
-DEFAULT_TIMED_MESSAGE_TTL = 300  # 5 минут
-BAN_KICK_MESSAGE_TTL = 24 * 60 * 60  # сутки
-
-
-# Добавляет колонку ttl_seconds в timed_messages, если её ещё нет.
-async def ensure_timed_messages_ttl_column(cur) -> None:
-    await cur.execute("PRAGMA table_info(timed_messages)")
-    columns = {row[1] for row in await cur.fetchall()}
-    if "ttl_seconds" not in columns:
-        await cur.execute(
-            "ALTER TABLE timed_messages ADD COLUMN ttl_seconds INTEGER NOT NULL DEFAULT 300"
-        )
-
-
-# Сохраняет сообщение для отложенного удаления через ttl_seconds.
-async def save_timed_message(
-    chat_id: int,
-    message_id: int,
-    ttl_seconds: int = DEFAULT_TIMED_MESSAGE_TTL,
-):
+# Сохраняет данные в базе или кэше.
+async def save_timed_message(chat_id: int, message_id: int):
     async with db() as cur:
-        await ensure_timed_messages_ttl_column(cur)
         await cur.execute(
             """
-            INSERT INTO timed_messages (chat_id, message_id, send_time, ttl_seconds)
-            VALUES (?, ?, strftime('%s','now'), ?)
+            INSERT INTO timed_messages (chat_id, message_id, send_time)
+            VALUES (?, ?, strftime('%s','now'))
             """,
-            (chat_id, message_id, ttl_seconds),
+            (chat_id, message_id),
         )
 
 
@@ -430,3 +410,54 @@ def is_in_chat_member(cm) -> bool:
     if cm.status == ChatMemberStatus.RESTRICTED:
         return getattr(cm, "is_member", True) is True
     return True
+
+# Права, которые отличают настоящего модератора от декоративного
+# Telegram-администратора с зелёным тегом и без полномочий.
+_COMMAND_ADMIN_RIGHTS = (
+    # Намеренно не учитываем can_manage_chat/can_invite_users/can_change_info:
+    # их иногда оставляют у декоративного администратора ради зелёного тега.
+    "can_delete_messages",
+    "can_manage_video_chats",
+    "can_restrict_members",
+    "can_promote_members",
+    "can_pin_messages",
+    "can_manage_topics",
+    "can_post_messages",
+    "can_edit_messages",
+    "can_post_stories",
+    "can_edit_stories",
+    "can_delete_stories",
+)
+
+
+def has_command_admin_rights(member, *, user_id: int | None = None, owner_id: int | None = None) -> bool:
+    """Проверяет право использовать административные команды бота.
+
+    Владелец из ``COSMOS_ID`` и создатель чата допускаются всегда. Обычный
+    Telegram-администратор допускается только при наличии хотя бы одного
+    реального права управления. Один декоративный зелёный тег команды не
+    включает.
+    """
+    if owner_id is not None and user_id is not None:
+        try:
+            if int(user_id) == int(owner_id):
+                return True
+        except (TypeError, ValueError):
+            pass
+
+    status = getattr(member, "status", None)
+    if status == ChatMemberStatus.CREATOR:
+        return True
+    if status != ChatMemberStatus.ADMINISTRATOR:
+        return False
+
+    return any(bool(getattr(member, right, False)) for right in _COMMAND_ADMIN_RIGHTS)
+
+
+async def is_command_admin(bot: Bot, chat_id: int, user_id: int, *, owner_id: int | None = None) -> bool:
+    """Загружает участника и применяет проверку реальных админ-прав."""
+    try:
+        member = await bot.get_chat_member(int(chat_id), int(user_id))
+    except Exception:
+        return owner_id is not None and int(user_id) == int(owner_id)
+    return has_command_admin_rights(member, user_id=user_id, owner_id=owner_id)

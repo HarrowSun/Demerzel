@@ -1,23 +1,25 @@
 # Логика блокировки чата: /lock, /unlock и ранняя остановка message-пайплайна.
 
 from aiogram.filters import Command
-from aiogram.enums import ChatMemberStatus
 from aiogram.types import Message
 from aiogram import Router
 
-from bot.utils import safe_delete
+from bot.utils import safe_delete, is_command_admin
 from bot.database import db
 from bot.message_queue import bot_answer
+from env_config import require_int_env
 
 router = Router()
+COSMOS_ID = require_int_env("COSMOS_ID")
 
 
 # Команда /lock: включает блокировку обычных сообщений в текущем чате.
 @router.message(Command("lock"))
 async def cmd_lock(message: Message):
     try:
-        member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+        if not await is_command_admin(
+            message.bot, message.chat.id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             return
 
         async with db() as cur:
@@ -38,8 +40,9 @@ async def cmd_lock(message: Message):
 @router.message(Command("unlock"))
 async def cmd_unlock(message: Message):
     try:
-        member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+        if not await is_command_admin(
+            message.bot, message.chat.id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             return
 
         async with db() as cur:
@@ -77,8 +80,9 @@ async def handle_chat_lock(message: Message) -> bool:
     if not row or not row["locked"]:
         return False
 
-    member = await message.bot.get_chat_member(chat_id, message.from_user.id)
-    if member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+    if await is_command_admin(
+        message.bot, chat_id, message.from_user.id, owner_id=COSMOS_ID
+    ):
         return False
 
     await safe_delete(message)
