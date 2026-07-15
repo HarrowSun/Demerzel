@@ -1,81 +1,39 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Редактировать набор изображений</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      const url = new URL(window.location.href);
-      if (url.searchParams.has('uploaded') || url.searchParams.has('deleted') || url.searchParams.has('csrf')) {
-        url.searchParams.delete('uploaded');
-        url.searchParams.delete('deleted');
-        url.searchParams.delete('csrf');
-        window.history.replaceState({}, '', url.toString());
-      }
-    });
-  </script>
-</head>
-
-<body>
-<div class="container-centered">
-  <h2>Загрузить изображение</h2>
-
-  {% if uploaded %}
-    {% if uploaded == '1' %}
-      <p style="margin:10px 0; color:green;">Изображение загружено</p>
-    {% else %}
-      <p style="margin:10px 0; color:red;">Не удалось загрузить изображение</p>
-    {% endif %}
-  {% endif %}
-
-  {% if deleted %}
-    {% if deleted == '1' %}
-      <p style="margin:10px 0; color:green;">Изображение удалено</p>
-    {% else %}
-      <p style="margin:10px 0; color:red;">Не удалось удалить изображение</p>
-    {% endif %}
-  {% endif %}
-
-  {% if csrf == '0' %}
-    <p style="margin:10px 0; color:red;">CSRF-проверка не пройдена. Обновите страницу и повторите.</p>
-  {% endif %}
-
+{% extends "base.html" %}
+{% block title %}Изображения — Demerzel Control{% endblock %}
+{% block kicker %}Медиатека бота{% endblock %}
+{% block page_title %}Набор изображений{% endblock %}
+{% block page_description %}Загружайте новые изображения и удаляйте неактуальные файлы из набора, который использует бот.{% endblock %}
+{% block notices %}
+  {% if uploaded == '1' %}<div class="notice notice-success"><span class="notice-icon">✓</span><div><strong>Изображение загружено</strong>Файл добавлен в медиатеку.</div></div>{% elif uploaded %}<div class="notice notice-error"><span class="notice-icon">!</span><div><strong>Ошибка загрузки</strong>Проверьте формат файла и повторите действие.</div></div>{% endif %}
+  {% if deleted == '1' %}<div class="notice notice-success"><span class="notice-icon">✓</span><div><strong>Изображение удалено</strong>Файл больше не находится в наборе.</div></div>{% elif deleted %}<div class="notice notice-error"><span class="notice-icon">!</span><div><strong>Не удалось удалить</strong>Обновите страницу и попробуйте ещё раз.</div></div>{% endif %}
+  {% if csrf == '0' %}<div class="notice notice-error"><span class="notice-icon">!</span><div><strong>Ошибка безопасности</strong>Обновите страницу и повторите действие.</div></div>{% endif %}
+{% endblock %}
+{% block content %}
+<section class="section-card compact">
+  <div class="section-header"><div><h2>Добавить изображение</h2><p>Поддерживаются JPG, JPEG, PNG и GIF.</p></div><span class="section-icon">＋</span></div>
   <form method="POST" enctype="multipart/form-data">
-    <input type="hidden" name="action" value="upload">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="file" name="image" accept=".jpg,.jpeg,.png,.gif" required>
-    <button type="submit">Загрузить</button>
+    <input type="hidden" name="action" value="upload"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <div class="form-group"><label for="image-upload">Файл</label><input id="image-upload" type="file" name="image" accept=".jpg,.jpeg,.png,.gif" required></div>
+      <div class="form-group" style="justify-content:flex-end;"><button type="submit">Загрузить изображение</button></div>
+    </div>
   </form>
-
-  <h3>Список изображений</h3>
-
-  <div style="display: flex; flex-wrap: wrap; justify-content: center;">
+</section>
+<section class="section-card">
+  <div class="section-header"><div><h2>Галерея</h2><p>Всего файлов: {{ images|length }}</p></div><span class="section-icon">▧</span></div>
+  {% if images %}
+  <div class="gallery-grid">
     {% for img in images %}
-      <div class="image-container">
-        <img
-          src="{{ url_for('image.serve_image') }}?type=images&img={{ img }}"
-          alt="{{ img }}"
-          class="image"
-        >
-        <p class="image-name">{{ img }}</p>
-
-        <form method="POST" onsubmit="return confirm('Вы уверены, что хотите удалить это изображение?');">
-          <input type="hidden" name="action" value="delete">
-          <input type="hidden" name="filename" value="{{ img }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="delete-button" type="submit"></button>
-        </form>
-      </div>
+    <article class="gallery-item">
+      <img src="{{ url_for('image.serve_image') }}?type=images&img={{ img }}" alt="{{ img }}" class="image" loading="lazy">
+      <p class="image-name" title="{{ img }}">{{ img }}</p>
+      <form method="POST" onsubmit="return confirm('Вы уверены, что хотите удалить это изображение?');">
+        <input type="hidden" name="action" value="delete"><input type="hidden" name="filename" value="{{ img }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="delete-button" type="submit" data-no-loading="1" aria-label="Удалить изображение"></button>
+      </form>
+    </article>
     {% endfor %}
   </div>
-
-  <p>
-    <a href="/">На главную</a> |
-    <a href="/logout">Выйти</a>
-  </p>
-</div>
-</body>
-</html>
+  {% else %}<div class="empty-state"><strong>Изображений пока нет</strong>Загрузите первый файл через форму выше.</div>{% endif %}
+</section>
+{% endblock %}

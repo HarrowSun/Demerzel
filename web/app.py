@@ -2,7 +2,6 @@
 
 from flask import Flask, render_template, redirect, session
 from dotenv import load_dotenv
-from werkzeug.middleware.proxy_fix import ProxyFix
 from env_config import require_env
 
 load_dotenv()
@@ -12,8 +11,6 @@ load_dotenv()
 def create_app():
     app = Flask(__name__)
     app.secret_key = require_env("FLASK_SECRET_KEY")
-    # Bothost/Traefik терминирует HTTPS и проксирует HTTP — нужно для корректных redirect URL.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     from .auth import auth_bp
     app.register_blueprint(auth_bp)
@@ -33,6 +30,9 @@ def create_app():
     from .edit_permission_messages import edit_permission_bp
     app.register_blueprint(edit_permission_bp)
 
+    from .edit_donation_notifications import edit_donation_notifications_bp
+    app.register_blueprint(edit_donation_notifications_bp)
+
     from .edit_other import edit_other_bp
     app.register_blueprint(edit_other_bp)
 
@@ -41,6 +41,13 @@ def create_app():
 
     from .edit_badwords import edit_badwords_bp
     app.register_blueprint(edit_badwords_bp)
+
+    from .appearance import appearance_bp, get_ui_settings
+    app.register_blueprint(appearance_bp)
+
+    @app.context_processor
+    def inject_ui_settings():
+        return {"ui_settings": get_ui_settings()}
 
     @app.get("/health")
     def health():

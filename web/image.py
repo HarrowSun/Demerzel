@@ -14,6 +14,7 @@ ALLOWED = {
     "images": os.path.join(BASE_DIR, "bot/images/vibe_images"),
     "permission": os.path.join(BASE_DIR, "bot/images/permission_images"),
     "scheduled": os.path.join(BASE_DIR, "bot/images/scheduled_images"),
+    "donation": os.path.join(BASE_DIR, "bot/images/donation_images"),
 }
 
 MAX_SIDE = 2048
@@ -35,13 +36,17 @@ def serve_image():
     folder = ALLOWED[type_]
     original = os.path.join(folder, file)
 
-    if not os.path.isfile(original):
-        abort(404)
-
     base_name, ext = os.path.splitext(file)
     ext = ext.lower().lstrip(".")
     jpg_name = f"{base_name}.jpg"
     jpg_path = os.path.join(folder, jpg_name)
+
+    # После первого просмотра PNG/GIF может быть преобразован в JPG.
+    # В базе остаётся исходное имя, поэтому сначала проверяем готовую JPG-копию.
+    if not os.path.isfile(original):
+        if os.path.isfile(jpg_path):
+            return send_file(jpg_path, conditional=True, max_age=86400)
+        abort(404)
 
     if os.path.isfile(jpg_path) and jpg_path != original:
         return send_file(jpg_path, conditional=True, max_age=86400)

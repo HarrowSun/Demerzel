@@ -3,14 +3,16 @@
 from aiogram import Router, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile, ChatPermissions
-from aiogram.enums import ChatMemberStatus
 
 from bot.message_queue import bot_answer, bot_reply, bot_send_photo
 
 from bot.database import db
-from bot.utils import (save_timed_message, BAN_KICK_MESSAGE_TTL, get_old_messages, 
-update_old_message, get_full_name, is_in_chat_member, safe_delete)
+from bot.utils import (
+    save_timed_message, get_old_messages, update_old_message, get_full_name,
+    is_in_chat_member, safe_delete, is_command_admin,
+)
 from bot.handlers.moderation import is_user_muted, send_restriction_warning
+from bot.warning_state import clear_warning
 from env_config import require_int_env
 
 import html
@@ -47,9 +49,9 @@ async def handle_save_command(message: Message, bot):
     try:
         await safe_delete(message)
 
-        chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-
-        if chat_member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+        if await is_command_admin(
+            bot, message.chat.id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             if message.reply_to_message:
                 chat_id = message.chat.id
                 user = message.reply_to_message.from_user
@@ -59,12 +61,22 @@ async def handle_save_command(message: Message, bot):
                     message.reply_to_message.text
                     or message.reply_to_message.caption
                     or ""
-                )
+                ).strip()
+
+                if not filled_form_text:
+                    await bot_answer(
+                        message,
+                        "Не удалось сохранить анкету: сообщение пустое.",
+                    )
+                    return
 
                 full_name = await get_full_name(user)
 
                 async with db() as cur:
                     await _save_filled_form(cur, chat_id, user_id, filled_form_text)
+
+                # После /save общий onboarding-warning больше не нужен.
+                await clear_warning(bot, chat_id, user_id)
 
                 # Снимаем Telegram-ограничения на медиа у пользователя.
                 # Это отдельный уровень прав Telegram и не заменяет внутреннюю модерацию бота.
@@ -210,6 +222,11 @@ async def handle_bv_command(message: Message):
         chat_id = message.chat.id
 
         if await is_user_muted(chat_id, message.from_user.id):
+            return
+
+        if not await is_command_admin(
+            message.bot, chat_id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             return
 
         if message.reply_to_message:
@@ -430,9 +447,9 @@ async def admin_stats(message: Message, bot: Bot):
         if await is_user_muted(chat_id, admin_id):
             return
 
-        chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-
-        if chat_member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+        if not await is_command_admin(
+            bot, chat_id, admin_id, owner_id=COSMOS_ID
+        ):
             return
 
         if message.reply_to_message is None:
@@ -484,7 +501,9 @@ async def handle_ban_command(message: Message, bot: Bot):
 
         admins = await bot.get_chat_administrators(chat_id)
         admin_ids = [a.user.id for a in admins]
-        if message.from_user.id not in admin_ids and message.from_user.id != COSMOS_ID:
+        if not await is_command_admin(
+            bot, chat_id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             return
 
         if not message.reply_to_message:
@@ -496,13 +515,13 @@ async def handle_ban_command(message: Message, bot: Bot):
 
         if target_id in admin_ids:
             sent = await bot_answer(message, "Нельзя банить администраторов.", wait=True)
-            await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
+            await save_timed_message(chat_id, sent.message_id)
             return
 
         await bot.ban_chat_member(chat_id, target_id)
 
         sent = await bot_answer(message, f"Пользователь {full_name} был забанен.", wait=True)
-        await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
+        await save_timed_message(chat_id, sent.message_id)
     except Exception as e:
         print("Ошибка /ban:", e)
 
@@ -520,7 +539,9 @@ async def handle_kick_command(message: Message, bot: Bot):
 
         admins = await bot.get_chat_administrators(chat_id)
         admin_ids = [a.user.id for a in admins]
-        if message.from_user.id not in admin_ids:
+        if not await is_command_admin(
+            bot, chat_id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             return
 
         if not message.reply_to_message:
@@ -532,14 +553,14 @@ async def handle_kick_command(message: Message, bot: Bot):
 
         if target_id in admin_ids:
             sent = await bot_answer(message, "Нельзя кикать администраторов.", wait=True)
-            await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
+            await save_timed_message(chat_id, sent.message_id)
             return
 
         await bot.ban_chat_member(chat_id, target_id)
         await bot.unban_chat_member(chat_id, target_id)
 
         sent = await bot_answer(message, f"Пользователь {full_name} был кикнут из чата.", wait=True)
-        await save_timed_message(chat_id, sent.message_id, BAN_KICK_MESSAGE_TTL)
+        await save_timed_message(chat_id, sent.message_id)
     except Exception as e:
         print("Ошибка /kick:", e)
 
@@ -557,7 +578,9 @@ async def handle_mute_command(message: Message, bot: Bot):
 
         admins = await bot.get_chat_administrators(chat_id)
         admin_ids = [a.user.id for a in admins]
-        if message.from_user.id not in admin_ids:
+        if not await is_command_admin(
+            bot, chat_id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             return
 
         if not message.reply_to_message:
@@ -622,7 +645,9 @@ async def handle_unmute_command(message: Message, bot: Bot):
 
         admins = await bot.get_chat_administrators(chat_id)
         admin_ids = [a.user.id for a in admins]
-        if message.from_user.id not in admin_ids:
+        if not await is_command_admin(
+            bot, chat_id, message.from_user.id, owner_id=COSMOS_ID
+        ):
             return
 
         if not message.reply_to_message:

@@ -1,70 +1,21 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Редактировать словарь матов</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container-centered">
-        <h2>Редактировать словарь матов:</h2>
-
-        {% if saved %}
-            <p style="margin: 10px 0; color: green;">Сохранено ✅</p>
-        {% endif %}
-
-        <p style="text-align:left; margin: 10px 0;">
-            Формат ввода: слова через пробел.<br>
-            При сохранении сайт автоматически приводит все слова к нижнему регистру, заменяет букву ё на е и убирает дубли.<br>
-            Не рекомендуется добавлять слова, смысл которых зависит от контекста, например сука, урод, даун и прочие, которые могут употребляться не только как оскорбления.<br>
-            Не нужно вручную добавлять варианты обхода: бот сам пытается распознать обход цензуры через спецсимволы и латиницу в словах на кириллице (например, бл9дь или пизд@).
-        </p>
-
-        <form method="POST">
-            <div class="form-container">
-                <p style="text-align:left; margin: 0 0 6px 0;">
-                    Префиксы: блокируют все слова, которые начинаются с указанной основы (например, хуй блокирует хуйло).
-                </p>
-                <div class="form-group">
-                    <textarea
-                        name="prefixes"
-                        style="height: 28px; min-height: 28px; padding: 4px 8px; line-height: 1.2;"
-                        spellcheck="false"
-                    >{{ prefixes_content | e }}</textarea>
-                </div>
-
-                <p style="text-align:left; margin: 10px 0 6px 0;">
-                    Точные слова: блокируют только полное слово (например, манда), без срабатывания на мандала, мандат и прочие.
-                </p>
-                <div class="form-group">
-                    <textarea
-                        name="exact_words"
-                        style="height: 28px; min-height: 28px; padding: 4px 8px; line-height: 1.2;"
-                        spellcheck="false"
-                    >{{ exact_words_content | e }}</textarea>
-                </div>
-            </div>
-
-            <button type="submit">Сохранить</button>
-        </form>
-
-        <p style="margin-top: 20px;">
-            <a href="/">На главную</a> |
-            <a href="/logout">Выйти</a>
-        </p>
-    </div>
-
-    <script src="{{ url_for('static', filename='autoresize.js') }}"></script>
-
-    <script>
-      (function () {
-        const url = new URL(window.location.href);
-        if (url.searchParams.has('saved')) {
-          url.searchParams.delete('saved');
-          history.replaceState({}, '', url.toString());
-        }
-      })();
-    </script>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Словарь матов — Demerzel Control{% endblock %}
+{% block kicker %}Модерация сообщений{% endblock %}
+{% block page_title %}Словарь матов{% endblock %}
+{% block page_description %}Управляйте префиксами и точными словами. Бот автоматически нормализует регистр, букву «ё», дубли и часть обходов цензуры.{% endblock %}
+{% block notices %}{% if saved %}<div class="notice notice-success"><span class="notice-icon">✓</span><div><strong>Словарь сохранён</strong>Обновлённые слова будут применяться при следующей проверке.</div></div>{% endif %}{% endblock %}
+{% block content %}
+<div class="info-panel"><p><strong>Как заполнять:</strong> вводите слова через пробел. Не добавляйте неоднозначные слова, которые часто используются в обычном контексте.</p><p>Спецсимволы и латиница внутри кириллических слов распознаются ботом автоматически.</p></div>
+<form method="POST">
+  <section class="section-card">
+    <div class="section-header"><div><h2>Префиксы</h2><p>Блокируют все слова, начинающиеся с указанной основы. Например, основа «хуй» также блокирует производные.</p></div><span class="section-icon">⌁</span></div>
+    <div class="form-group"><label for="prefixes">Список основ</label><textarea id="prefixes" name="prefixes" spellcheck="false">{{ prefixes_content | e }}</textarea></div>
+  </section>
+  <section class="section-card">
+    <div class="section-header"><div><h2>Точные слова</h2><p>Срабатывают только на полное совпадение и не затрагивают длинные слова с похожей частью.</p></div><span class="section-icon">≡</span></div>
+    <div class="form-group"><label for="exact_words">Список точных слов</label><textarea id="exact_words" name="exact_words" spellcheck="false">{{ exact_words_content | e }}</textarea></div>
+  </section>
+  <div class="sticky-actions"><a class="button button-ghost" href="{{ url_for('index') }}">Отменить</a><button type="submit">Сохранить словарь</button></div>
+</form>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='autoresize.js') }}"></script>{% endblock %}
