@@ -16,11 +16,36 @@ from bot.warning_state import clear_warning
 from env_config import require_int_env
 
 import html
+import os
 import time
 
 router = Router()
 
 COSMOS_ID = require_int_env("COSMOS_ID")
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _resolve_rank_image_path(image_path: str) -> str | None:
+    normalized = (image_path or "").strip().replace("\\", "/").lstrip("/")
+    if not normalized:
+        return None
+
+    full_path = os.path.join(_PROJECT_ROOT, "bot", "images", *normalized.split("/"))
+    if os.path.isfile(full_path):
+        return full_path
+    return None
+
+
+def _build_url_keyboard(button_text: str | None, button_url: str | None) -> InlineKeyboardMarkup | None:
+    text = (button_text or "").strip()
+    url = (button_url or "").strip()
+    if not text or not url:
+        return None
+    if not (url.startswith("http://") or url.startswith("https://") or url.startswith("tg://")):
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=text, url=url)]]
+    )
 
 
 # Сохраняет текст анкеты пользователя в chat_users.
@@ -362,13 +387,15 @@ async def send_stats(message: Message):
             stats_row = await cur.fetchone()
 
         if stats_row:
-            current_score, current_level = stats_row
+            current_score = int(stats_row[0] or 0)
+            current_level = int(stats_row[1] or 0)
         else:
             current_score, current_level = 0, 0
 
         full_name = await get_full_name(message.from_user)
         safe_full_name = html.escape(full_name)
         user_name_link = f'<a href="tg://user?id={user_id}">{safe_full_name}</a>'
+        sent = None
 
         # Отдельный текст для пользователей, у которых уровень еще не определен.
         if current_level == 0:
@@ -382,7 +409,6 @@ async def send_stats(message: Message):
                 parse_mode="HTML",
                 wait=True,
             )
-
         else:
             # Для ненулевого уровня подгружаем визуал и кнопку из таблицы levels.
             async with db() as cur:
@@ -396,43 +422,51 @@ async def send_stats(message: Message):
                 )
                 level_data = await cur.fetchone()
 
-            if level_data:
-                rank_name, image_path, button_text, button_url = level_data
-
-                keyboard = (
-                    InlineKeyboardMarkup(
-                        inline_keyboard=[[InlineKeyboardButton(text=button_text, url=button_url)]]
-                    )
-                    if button_text and button_url
-                    else None
-                )
-
-                photo = FSInputFile(f"bot/images/{image_path}")
-
-                sent = await bot_send_photo(
-                    message,
-                    photo,
-                    caption=(
-                        f"{user_name_link}, ваше текущее воплощение: {rank_name}\n\n"
-                        f"Количество очков: {current_score}"
-                    ),
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
-                    wait=True,
-                )
-            else:
-                # Защита от неконсистентных данных: уровень есть, а записи в levels нет.
+            if not level_data:
                 sent = await bot_answer(
                     message,
                     "Произошла ошибка: данные уровня не найдены.",
                     wait=True,
                 )
+            else:
+                rank_name, image_path, button_text, button_url = level_data
+                safe_rank_name = html.escape((rank_name or "").strip())
+                caption = (
+                    f"{user_name_link}, ваше текущее воплощение: {safe_rank_name}\n\n"
+                    f"Количество очков: {current_score}"
+                )
+                keyboard = _build_url_keyboard(button_text, button_url)
+                image_full_path = _resolve_rank_image_path(image_path)
+
+                # Сначала пробуем фото; при любой ошибке/отсутствии файла — текстовый fallback.
+                if image_full_path:
+                    try:
+                        sent = await bot_send_photo(
+                            message,
+                            FSInputFile(image_full_path),
+                            caption=caption,
+                            parse_mode="HTML",
+                            reply_markup=keyboard,
+                            wait=True,
+                        )
+                    except Exception as photo_error:
+                        print(f"Ошибка /stats (photo): {photo_error}")
+                        sent = None
+
+                if not sent:
+                    sent = await bot_answer(
+                        message,
+                        caption,
+                        parse_mode="HTML",
+                        reply_markup=keyboard,
+                        wait=True,
+                    )
 
         if sent:
             await save_timed_message(chat_id, sent.message_id)
 
     except Exception as e:
-        print("Ошибка /stats:", e)
+        print(f"Ошибка /stats: {e}")
 
 
 # Показывает админскую статистику по таблицам и активностям.
